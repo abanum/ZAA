@@ -1,0 +1,2472 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NTSC 無信号砂嵐シミュレータ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink:      #14120e;
+  --case:     #241f18;
+  --bezel:    #100e0b;
+  --rule:     #3d3529;
+  --bone:     #d9d0bc;
+  --muted:    #8a8069;
+  --amber:    #e4933a;
+  --signal:   #86c7b4;
+  --label: "Barlow Condensed", "Noto Sans JP", system-ui, sans-serif;
+  --body:  "Noto Sans JP", system-ui, sans-serif;
+  --mono:  "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+  padding: 28px 20px 48px;
+  background-image:
+    radial-gradient(120% 90% at 50% -10%, #241f18 0%, #14120e 62%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px);
+}
+
+.masthead {
+  max-width: 1360px;
+  margin: 0 auto 22px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 12px;
+}
+.masthead__title {
+  font-family: var(--label);
+  font-weight: 600;
+  font-size: clamp(20px, 3vw, 30px);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  margin: 0;
+}
+.masthead__sub {
+  font-family: var(--body);
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  letter-spacing: .02em;
+}
+
+.bench {
+  max-width: 1360px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 26px;
+  align-items: start;
+}
+
+/* ---------- CRT ---------- */
+.stage {
+  background: linear-gradient(180deg, #2b251d, #191510);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.6);
+}
+.stage__tube {
+  position: relative;
+  background: var(--bezel);
+  border-radius: 22px / 30px;
+  padding: 14px;
+  box-shadow: inset 0 0 0 1px #000, inset 0 2px 14px rgba(0,0,0,.9);
+}
+.stage__tube canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  border-radius: 16px / 24px;
+  background: #000;
+  image-rendering: auto;
+}
+.stage__hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  text-align: center;
+  font-family: var(--label);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: #4a4336;
+  font-size: 14px;
+  transition: opacity .35s ease;
+  pointer-events: none;
+}
+.stage.tube-active .stage__hint { opacity: 0; }
+
+.deck {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+.lamp {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: #3a3025;
+  box-shadow: inset 0 0 3px rgba(0,0,0,.9);
+  flex: none;
+}
+.lamp.is-on {
+  background: var(--amber);
+  box-shadow: 0 0 12px rgba(228,147,58,.75), inset 0 0 3px rgba(255,220,170,.9);
+}
+.status {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--signal);
+  letter-spacing: .04em;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.btn {
+  font-family: var(--label);
+  font-size: 14px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--bone);
+  background: #322b22;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.btn:hover { background: #3c3428; }
+.btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.btn--primary { background: #4a3a22; border-color: #6d5326; color: #f3d9b0; }
+.btn--accent { background: #26403a; border-color: #2f6d5c; color: #b0f3e0; }
+.btn--accent:hover { background: #1f574a; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn--primary:hover { background: #57431f; }
+
+/* ---------- サービスパネル ---------- */
+.panel-shell {
+  background: linear-gradient(180deg, #2b251d, #1c1813);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0,0,0,.55);
+}
+.panel-shell__gpu {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #6d6453;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-shell__head {
+  font-family: var(--label);
+  font-size: 13px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--rule);
+}
+.panel {
+  padding: 4px 18px 18px;
+  max-height: 74vh;
+  overflow-y: auto;
+}
+.group { padding: 14px 0 4px; border-bottom: 1px dashed #322b21; }
+.group:last-child { border-bottom: 0; }
+.group__title {
+  font-family: var(--label);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .24em;
+  color: var(--amber);
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.group__title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, #5a4a30, transparent);
+}
+
+.row { margin-bottom: 13px; }
+.row__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+.row__label { font-size: 12.5px; color: var(--bone); }
+.row__value {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--signal);
+  white-space: nowrap;
+}
+.row__slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: #3d3529;
+  border-radius: 2px;
+  outline: none;
+}
+.row__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 17px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #cbbfa4, #8a7d63);
+  border: 1px solid #1a160f;
+  cursor: pointer;
+}
+.row__slider::-moz-range-thumb {
+  width: 12px; height: 16px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #cbbfa4, #8a7d63);
+  border: 1px solid #1a160f;
+  cursor: pointer;
+}
+.row__slider:focus-visible { box-shadow: 0 0 0 2px var(--amber); }
+.row--toggle .row__head { margin-bottom: 0; }
+.row--toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.row--toggle .row__head { flex: 1; }
+.row__switch { accent-color: var(--amber); width: 16px; height: 16px; cursor: pointer; }
+
+.notes {
+  max-width: 1360px;
+  margin: 26px auto 0;
+  font-size: 12.5px;
+  line-height: 1.85;
+  color: var(--muted);
+  border-top: 1px solid var(--rule);
+  padding-top: 14px;
+}
+.notes b { color: var(--bone); font-weight: 500; }
+
+@media (max-width: 900px) {
+  .bench { grid-template-columns: minmax(0, 1fr); }
+  .panel { max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage__hint { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <h1 class="masthead__title">NTSC 無信号砂嵐シミュレータ</h1>
+  <p class="masthead__sub">IF雑音／映像入力 → 検波 → NTSCデコード → CRT表示 を実時間で再現します</p>
+</header>
+
+<main class="bench">
+  <div class="stage" id="stage">
+    <div class="stage__tube">
+      <canvas id="screen" width="1296" height="972" aria-label="砂嵐を表示するCRT画面"></canvas>
+      <div class="stage__hint">
+        <span>NO INPUT</span>
+        <span>電源を入れると受信を開始します</span>
+      </div>
+    </div>
+    <div class="deck">
+      <span class="lamp" id="lamp" aria-hidden="true"></span>
+      <span class="status" id="status">待機中</span>
+      <button class="btn btn--accent" id="capture" type="button">映像を取り込む</button>
+      <button class="btn btn--primary" id="power" type="button">電源を入れる</button>
+      <button class="btn" id="reset" type="button">初期値に戻す</button>
+      <button class="btn" id="fullscreen" type="button">全画面</button>
+    </div>
+  </div>
+
+  <aside class="panel-shell">
+    <div class="panel-shell__head">Service Panel <span class="panel-shell__gpu" id="renderer"></span></div>
+    <div class="panel" id="panel"></div>
+  </aside>
+</main>
+
+<p class="notes">
+  <b>再現している要素:</b>
+  IF帯の複素ガウス雑音を帯域制限したうえで包絡線検波するため、輝度は<b>レイリー分布</b>になります。
+  NTSCは<b>負変調</b>なので検波出力を反転して映像にしています。
+  映像LPFの帯域が水平方向の相関を決めるため、粒は<b>横長</b>になります。
+  カラーバーストが無いので<b>カラーキラー</b>が働き、既定ではモノクロです（キラーを切ると3.58MHz帯の雑音が同期検波され、色相がゆっくり回る色斑が出ます）。
+  走査は<b>59.94Hzのフィールド単位</b>で更新され、奇数/偶数走査線の更新タイミングがずれます。
+  音声はFM検波の三角雑音に75µsデエンファシスを掛けた特性（＝白色雑音の1次ハイパス）です。
+</p>
+
+<script>
+/* ===== src/config/NtscConstants.js ===== */
+// NTSC-M 系の物理定数と、シミュレーション用の派生値。
+// ここは「値の定義」のみを持ち、処理は一切書かない。
+
+const NTSC = Object.freeze({
+  // 色副搬送波 fsc
+  SUBCARRIER_HZ: 3579545.0,
+  // 4fsc サンプリング（デジタルコンポジットの標準）
+  SAMPLE_RATE_HZ: 3579545.0 * 4.0,
+
+  // 走査
+  LINES_PER_FRAME: 525,
+  LINES_PER_FIELD: 262.5,
+  ACTIVE_LINES_PER_FIELD: 243,
+  ACTIVE_LINES_PER_FRAME: 486,
+
+  // 1H = 63.5555us、有効映像 ≒ 52.6us → 4fsc で約 753 サンプル
+  SAMPLES_PER_LINE: 910,
+  ACTIVE_SAMPLES_PER_LINE: 754,
+
+  // フィールド周波数 59.94Hz
+  FIELD_RATE_HZ: 60000.0 / 1001.0,
+
+  // 映像帯域（VSB）
+  VIDEO_BANDWIDTH_HZ: 4200000.0,
+  IF_NOISE_BANDWIDTH_HZ: 5000000.0,
+
+  // 音声（FM, 米国 75us デエンファシス）
+  DEEMPHASIS_TAU_S: 75e-6,
+  AUDIO_LPF_HZ: 15000.0,
+  INTERCARRIER_HZ: 15734.264,
+});
+
+// シェーダへ渡す正規化カットオフ（fc / fs）
+const NORMALIZED = Object.freeze({
+  VIDEO_LPF: NTSC.VIDEO_BANDWIDTH_HZ / NTSC.SAMPLE_RATE_HZ,
+  IF_LPF: NTSC.IF_NOISE_BANDWIDTH_HZ / NTSC.SAMPLE_RATE_HZ,
+});
+
+const TEXTURE_SIZE = Object.freeze({
+  FIELD_WIDTH: NTSC.ACTIVE_SAMPLES_PER_LINE,
+  FIELD_HEIGHT: NTSC.ACTIVE_LINES_PER_FIELD,
+});
+
+// カラーバースト基準位相。+I 軸から見て 57°（-(B-Y) 軸、慣例 33° 表記）。
+const BURST_PHASE_RAD = (57.0 * Math.PI) / 180.0;
+
+// 副搬送波位相モデル
+//   ・行内: サンプルごとに π/2 進む（4fsc）→ シェーダ側で 0.5π·n として加算
+//   ・行間: 各走査線の先頭で π ずれる（1H に半サイクル余分に入るため）→ 行の偶奇で 0 or π
+//   ・フィールド間: 1 フィールド = 262.5 走査線の 0.5 により毎フィールド π/2 相当ずれ、
+//                    4 フィールド（=2 フレーム）で一巡する。
+// これらを合成した「そのフィールドの先頭走査線の基準位相」を返す。
+// 実際の各走査線位相は base + (line が奇数なら π) をシェーダに渡して構成する。
+function fieldBasePhase(fieldIndex4) {
+  // 262.5 の半端 0.5 走査線ぶん = π の位相送りが毎フィールド蓄積する。
+  return (Math.PI * fieldIndex4) % (2.0 * Math.PI);
+}
+
+/* ===== src/config/DefaultParams.js ===== */
+// 可変パラメータの定義。UI はこの配列から自動生成される。
+// group: パネル上の区分 / key: ParameterStore のキー
+
+const PARAM_DEFS = Object.freeze([
+  // --- 信号 / 電界強度 ---
+  { key: 'fieldStrength', group: 'SIGNAL', label: '電界強度 (0=砂嵐)', min: 0.0, max: 1.0, step: 0.01, value: 1.00, unit: '' },
+  { key: 'noiseFloor', group: 'SIGNAL', label: '最小雑音 (残る粒)', min: 0.0, max: 0.30, step: 0.01, value: 0.04, unit: '' },
+
+  // --- エンコーダ（映像入力時） ---
+  { key: 'chromaBandI', group: 'ENCODER', label: 'I 帯域', min: 0.4, max: 2.0, step: 0.1, value: 1.3, unit: 'MHz' },
+  { key: 'chromaBandQ', group: 'ENCODER', label: 'Q 帯域', min: 0.2, max: 1.3, step: 0.1, value: 0.4, unit: 'MHz' },
+  { key: 'encChromaGain', group: 'ENCODER', label: '変調クロマゲイン', min: 0.0, max: 1.5, step: 0.05, value: 1.0, unit: '' },
+  { key: 'aspectMode', group: 'ENCODER', label: '横圧縮 (16:9→4:3)', min: 0.0, max: 1.0, step: 1.0, value: 0.0, unit: '', type: 'toggle' },
+  { key: 'ycSeparation', group: 'ENCODER', label: 'Y/C分離 0:BPF 1:2comb 2:3comb', min: 0.0, max: 2.0, step: 1.0, value: 1.0, unit: '' },
+
+  // --- 受信・検波系 ---
+  { key: 'agcLevel', group: 'RF / DETECTOR', label: '検波レベル (AGC)', min: 0.20, max: 0.95, step: 0.01, value: 0.62, unit: '' },
+  { key: 'agcJitter', group: 'RF / DETECTOR', label: 'AGCハンチング', min: 0.0, max: 0.40, step: 0.01, value: 0.06, unit: '' },
+  { key: 'ifBandwidth', group: 'RF / DETECTOR', label: 'IF帯域幅', min: 2.0, max: 7.0, step: 0.1, value: 5.0, unit: 'MHz' },
+
+  // --- 映像デコーダ ---
+  { key: 'lumaBandwidth', group: 'VIDEO DECODER', label: '映像帯域 (LPF)', min: 1.0, max: 4.2, step: 0.1, value: 4.2, unit: 'MHz' },
+  { key: 'chromaGain', group: 'VIDEO DECODER', label: 'クロマゲイン', min: 0.0, max: 2.0, step: 0.01, value: 0.70, unit: '' },
+  { key: 'colorKiller', group: 'VIDEO DECODER', label: 'カラーキラー', min: 0.0, max: 1.0, step: 1.0, value: 1.0, unit: '', type: 'toggle' },
+  { key: 'chromaDrift', group: 'VIDEO DECODER', label: '副搬送波位相ドリフト', min: 0.0, max: 3.0, step: 0.05, value: 0.6, unit: 'rad/s' },
+  { key: 'contrast', group: 'VIDEO DECODER', label: 'コントラスト', min: 0.3, max: 2.0, step: 0.01, value: 1.15, unit: '' },
+  { key: 'brightness', group: 'VIDEO DECODER', label: 'ブライトネス', min: -0.3, max: 0.3, step: 0.01, value: -0.02, unit: '' },
+
+  // --- CRT 表示系 ---
+  { key: 'interlace', group: 'CRT', label: 'インターレース', min: 0.0, max: 1.0, step: 1.0, value: 1.0, unit: '', type: 'toggle' },
+  { key: 'persistence', group: 'CRT', label: '蛍光体残光', min: 0.0, max: 0.75, step: 0.01, value: 0.22, unit: '' },
+  { key: 'spotV', group: 'CRT', label: 'ビーム径 (垂直)', min: 0.30, max: 1.60, step: 0.01, value: 0.45, unit: 'line' },
+  { key: 'spotH', group: 'CRT', label: 'ビーム径 (水平)', min: 0.30, max: 2.50, step: 0.01, value: 0.85, unit: 'smp' },
+  { key: 'scanline', group: 'CRT', label: '走査線の見え (高解像度時のみ)', min: 0.0, max: 0.60, step: 0.01, value: 0.35, unit: '' },
+  { key: 'curvature', group: 'CRT', label: '画面曲率', min: 0.0, max: 0.12, step: 0.005, value: 0.025, unit: '' },
+  { key: 'vignette', group: 'CRT', label: '周辺光量落ち', min: 0.0, max: 0.8, step: 0.01, value: 0.30, unit: '' },
+  { key: 'overscan', group: 'CRT', label: 'オーバースキャン', min: 0.0, max: 0.08, step: 0.005, value: 0.02, unit: '' },
+
+  // --- 描画負荷 ---
+  { key: 'renderScale', group: 'RENDER', label: '描画解像度', min: 0.40, max: 2.00, step: 0.05, value: 1.50, unit: 'x' },
+  { key: 'bloom', group: 'RENDER', label: '管面ハレーション', min: 0.0, max: 0.30, step: 0.01, value: 0.10, unit: '' },
+
+  // --- 音声 ---
+  { key: 'volume', group: 'AUDIO', label: '音量', min: 0.0, max: 1.0, step: 0.01, value: 0.35, unit: '' },
+  { key: 'intercarrier', group: 'AUDIO', label: 'インターキャリアビート', min: 0.0, max: 0.25, step: 0.01, value: 0.0, unit: '' },
+]);
+
+function buildDefaultValues() {
+  const out = {};
+  for (const def of PARAM_DEFS) out[def.key] = def.value;
+  return out;
+}
+
+/* ===== src/shaders/QuadVertex.js ===== */
+const QUAD_VERTEX_SOURCE = `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}
+`;
+
+/* ===== src/shaders/NoiseFragment.js ===== */
+// Pass 0: 複素ガウス白色雑音 (I, Q) をテクスチャへ書き出す。
+//
+// 以前は検波パスの FIR タップごとに Box-Muller を呼んでいたため、
+// 1 サンプルあたり 13 回の log/sqrt/sin/cos が発生していた。
+// ここで 1 回だけ生成しておき、検波パスは texelFetch で読むだけにする。
+//
+// 格納形式: RGBA8 の R,G に I,Q を [-4σ, +4σ] → [0,1] で線形写像。
+// 8bit 量子化雑音は FIR 後で約 -41dB となり無視できる。
+
+const NOISE_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform vec2 uSize;
+uniform uint uFieldSeed;
+
+const float PI = 3.141592653589793;
+
+uint hashU(uint x) {
+  x ^= x >> 16u; x *= 0x7feb352du;
+  x ^= x >> 15u; x *= 0x846ca68bu;
+  x ^= x >> 16u; return x;
+}
+
+float hashF(uint x) {
+  return float(hashU(x)) * 2.3283064365386963e-10;
+}
+
+void main() {
+  int n    = int(floor(vUv.x * uSize.x));
+  int line = int(floor(vUv.y * uSize.y));
+
+  uint s = uint(line) * 1000003u + uint(n) * 65537u + uFieldSeed * 2654435761u;
+  float u1 = max(hashF(s), 1.0e-7);
+  float u2 = hashF(s + 0x9e3779b9u);
+  float r  = sqrt(-2.0 * log(u1));
+  float a  = 2.0 * PI * u2;
+
+  vec2 iq = vec2(r * cos(a), r * sin(a));
+  fragColor = vec4(clamp(iq * 0.125 + 0.5, 0.0, 1.0), 0.0, 1.0);
+}
+`;
+
+/* ===== src/shaders/DetectorFragment.js ===== */
+// Pass 1: チューナ/IF/映像検波の再現。
+//   1. Pass 0 が生成した複素ガウス白色雑音 (I, Q) を読み出す
+//   2. IF 帯域幅に相当する FIR で帯域制限（複素包絡線なので片側 B/2）
+//   3. 包絡線検波 -> 振幅はレイリー分布になる
+//   4. NTSC は負変調なので反転して映像信号にする
+// 出力: R チャンネルにコンポジット映像レベル（0=同期/黒つぶれ, 1=白）
+
+const DETECTOR_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uNoise;
+uniform vec2  uSize;       // (有効サンプル数, 有効走査線数)
+uniform uint  uFieldSeed;
+uniform float uIfCutoff;   // (IF帯域幅/2) / fs
+uniform float uLevel;      // AGC 検波レベル（搬送波振幅の平均値）
+uniform float uJitter;     // AGC ハンチング量
+
+const float PI = 3.141592653589793;
+const int   TAP_RADIUS = 6;
+
+uint hashU(uint x) {
+  x ^= x >> 16u; x *= 0x7feb352du;
+  x ^= x >> 15u; x *= 0x846ca68bu;
+  x ^= x >> 16u; return x;
+}
+
+float hashF(uint x) {
+  return float(hashU(x)) * 2.3283064365386963e-10;
+}
+
+// [-4σ, +4σ] に写像された雑音テクスチャを元に戻す。端は巻き戻して参照する。
+vec2 noiseIQ(int line, int n) {
+  int w = int(uSize.x);
+  int nx = n < 0 ? n + w : (n >= w ? n - w : n);
+  return texelFetch(uNoise, ivec2(nx, line), 0).rg * 8.0 - 4.0;
+}
+
+float sinc(float x) {
+  return abs(x) < 1.0e-5 ? 1.0 : sin(PI * x) / (PI * x);
+}
+
+float lpfTap(int k, float fcn) {
+  float fk = float(k);
+  float ideal = 2.0 * fcn * sinc(2.0 * fcn * fk);
+  float win = 0.54 + 0.46 * cos(PI * fk / float(TAP_RADIUS + 1));
+  return ideal * win;
+}
+
+void main() {
+  int n    = int(floor(vUv.x * uSize.x));
+  int line = clamp(int(floor(vUv.y * uSize.y)), 0, int(uSize.y) - 1);
+
+  vec2  acc  = vec2(0.0);
+  float norm = 0.0;
+  for (int k = -TAP_RADIUS; k <= TAP_RADIUS; ++k) {
+    float w = lpfTap(k, uIfCutoff);
+    acc  += noiseIQ(line, n + k) * w;
+    norm += w * w;
+  }
+  acc /= sqrt(max(norm, 1.0e-6));   // 分散 1 に戻す
+
+  // 包絡線検波: sigma=1 のレイリー分布、平均 = sqrt(pi/2) = 1.25331
+  float env = length(acc);
+
+  // AGC は無信号時に最大利得へ張り付き、緩やかにハンチングする
+  float wobble = 1.0 + uJitter * (hashF(uFieldSeed * 7919u + uint(line) * 131u) - 0.5);
+  float carrier = env * (uLevel / 1.2533141) * wobble;
+
+  // 負変調: 搬送波振幅が大きいほど暗い
+  float video = 1.0 - carrier;
+
+  fragColor = vec4(clamp(video, 0.0, 1.0), 0.0, 0.0, 1.0);
+}
+`;
+
+/* ===== src/shaders/EncoderFragment.js ===== */
+// Pass A: 入力 RGB を NTSC コンポジット信号へエンコードする。
+//   RGB → YIQ → 帯域制限(Y:4.2 / I:1.3 / Q:0.4 MHz) → 3.58MHz 変調
+//
+// 出力: R チャンネルにコンポジット振幅。
+//   色副搬送波の位相はライン先頭からの絶対サンプル位置 n から算出し、
+//   バースト位相と 4 フィールドカウンタを加味することでドットクロールを再現する。
+//
+// I/Q の帯域が非対称（1.3 / 0.4 MHz）であることが NTSC の色にじみの正体。
+// Y を広く、Q を最も狭く帯域制限するため、赤系の縦エッジが横に流れる。
+
+const ENCODER_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uVideo;
+uniform vec2  uSize;          // (有効サンプル数, 有効走査線数)
+uniform float uLumaCutoff;    // Y 帯域 / fs
+uniform float uCutoffI;       // I 帯域 / fs
+uniform float uCutoffQ;       // Q 帯域 / fs
+uniform float uChromaGain;    // 変調クロマゲイン
+uniform float uBurstPhase;     // バースト基準位相 [rad]
+uniform float uFieldBasePhase; // フィールド先頭の基準位相
+uniform float uAspectMode;     // 0: レターボックス, 1: 横圧縮
+uniform float uInputAspect;    // 入力の幅/高さ
+
+const float PI = 3.141592653589793;
+const int   R_Y = 8;
+const int   R_I = 14;
+const int   R_Q = 26;   // Q は 0.4MHz と狭いためタップ長最大
+
+float win(int k, int radius) {
+  return 0.54 + 0.46 * cos(PI * float(k) / float(radius + 1));
+}
+
+// 入力映像のサンプリング。4:3 の表示領域に合わせて uv を補正する。
+vec3 sampleRGB(float sx, float row) {
+  float targetAspect = 4.0 / 3.0;
+  vec2 uv = vec2(sx, row);
+  if (uAspectMode < 0.5) {
+    // レターボックス: 入力アスペクトを保ったまま内側に収める
+    float scale = uInputAspect / targetAspect;
+    if (scale > 1.0) {
+      uv.y = (uv.y - 0.5) * scale + 0.5;   // 上下に黒帯
+    } else {
+      uv.x = (uv.x - 0.5) / scale + 0.5;   // 左右に黒帯
+    }
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec3(0.0);
+  }
+  // 横圧縮モードはそのまま貼る（4:3 に引き伸ばす）
+  return texture(uVideo, uv).rgb;
+}
+
+vec3 rgb2yiq(vec3 c) {
+  return vec3(
+    0.299 * c.r + 0.587 * c.g + 0.114 * c.b,
+    0.596 * c.r - 0.274 * c.g - 0.322 * c.b,
+    0.211 * c.r - 0.523 * c.g + 0.312 * c.b
+  );
+}
+
+void main() {
+  int n    = int(floor(vUv.x * uSize.x));
+  int line = clamp(int(floor(vUv.y * uSize.y)), 0, int(uSize.y) - 1);
+  float du = 1.0 / uSize.x;
+  float row = (float(line) + 0.5) / uSize.y;
+
+  // 各成分を別カットオフで水平帯域制限する。
+  // Y は R_Y、I は R_I、Q は R_Q タップ。1 ループで 3 成分を同時に畳み込む。
+  float y = 0.0, ci = 0.0, cq = 0.0;
+  float ny = 0.0, ni = 0.0, nq = 0.0;
+  for (int k = -R_Q; k <= R_Q; ++k) {
+    float sx = vUv.x + float(k) * du;
+    vec3 yiq = rgb2yiq(sampleRGB(sx, row));
+
+    // Q（全タップ使用）
+    float wq = 2.0 * uCutoffQ * (abs(float(k)) < 0.5 ? 1.0
+             : sin(2.0 * PI * uCutoffQ * float(k)) / (2.0 * PI * uCutoffQ * float(k))) * win(k, R_Q);
+    cq += yiq.z * wq; nq += wq;
+
+    // I（内側 R_I タップのみ）
+    if (k >= -R_I && k <= R_I) {
+      float wi = 2.0 * uCutoffI * (abs(float(k)) < 0.5 ? 1.0
+               : sin(2.0 * PI * uCutoffI * float(k)) / (2.0 * PI * uCutoffI * float(k))) * win(k, R_I);
+      ci += yiq.y * wi; ni += wi;
+    }
+    // Y（内側 R_Y タップのみ）
+    if (k >= -R_Y && k <= R_Y) {
+      float wy = 2.0 * uLumaCutoff * (abs(float(k)) < 0.5 ? 1.0
+               : sin(2.0 * PI * uLumaCutoff * float(k)) / (2.0 * PI * uLumaCutoff * float(k))) * win(k, R_Y);
+      y += yiq.x * wy; ny += wy;
+    }
+  }
+  y  /= max(ny, 1.0e-6);
+  ci /= max(ni, 1.0e-6);
+  cq /= max(nq, 1.0e-6);
+
+  // 副搬送波位相: 絶対サンプル位置 + 走査線ごとの反転 + バースト基準。
+  // 行の偶奇で π 反転し、フィールド基準位相 uFieldBasePhase を加える。
+  float linePhase = uFieldBasePhase + (((line & 1) == 1) ? PI : 0.0);
+  float phase = 0.5 * PI * float(n) + linePhase + uBurstPhase;
+  float composite = y + uChromaGain * (ci * cos(phase) + cq * sin(phase));
+
+  // コンポジットは [-0.33, 1.33] 程度に振れるため、0.5 中心・0.375 スケールで
+  // RGBA8 [0,1] に収める（検波側で復元する）。IRE の余裕分に相当。
+  float stored = composite * 0.375 + 0.5;
+  fragColor = vec4(clamp(stored, 0.0, 1.0), y, 0.0, 1.0);
+}
+`;
+
+/* ===== src/shaders/RiceDetectorFragment.js ===== */
+// Pass B: ライス検波。搬送波（エンコード済みコンポジット映像）に
+//   帯域制限した複素ガウス雑音を重畳し、包絡線検波する。
+//
+//   fieldStrength = 1 : ほぼクリアなコンポジット信号（雑音は noiseFloor のみ）
+//   fieldStrength = 0 : 搬送波が消え、レイリー分布 = 純粋な砂嵐（1.1 版と一致）
+//
+// 出力はコンポジット信号（Y + 変調クロマ）。この後の Pass C が Y/C 分離を行う。
+// 雑音は Pass 0 の雑音テクスチャ（複素ガウス I/Q）を IF 帯域で整形して用いる。
+
+const RICE_DETECTOR_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uNoise;      // 複素ガウス白色雑音 (R,G = I,Q)
+uniform sampler2D uComposite;  // エンコード済みコンポジット (R成分)。未取得時は黒。
+uniform vec2  uSize;
+uniform uint  uFieldSeed;
+uniform float uIfCutoff;       // (IF帯域幅/2) / fs
+uniform float uFieldStrength;  // 電界強度 0..1
+uniform float uNoiseFloor;     // 電界最大でも残す雑音量
+uniform float uJitter;         // AGC ハンチング
+uniform float uHasVideo;       // 1: 映像入力あり, 0: 砂嵐のみ
+uniform float uSnowLevel;      // 砂嵐時の検波レベル (agcLevel)
+
+const float PI = 3.141592653589793;
+const int   TAP_RADIUS = 6;
+
+uint hashU(uint x) {
+  x ^= x >> 16u; x *= 0x7feb352du;
+  x ^= x >> 15u; x *= 0x846ca68bu;
+  x ^= x >> 16u; return x;
+}
+float hashF(uint x) { return float(hashU(x)) * 2.3283064365386963e-10; }
+
+vec2 noiseIQ(int line, int n) {
+  int w = int(uSize.x);
+  int nx = n < 0 ? n + w : (n >= w ? n - w : n);
+  return texelFetch(uNoise, ivec2(nx, line), 0).rg * 8.0 - 4.0;
+}
+
+float sinc(float x) { return abs(x) < 1.0e-5 ? 1.0 : sin(PI * x) / (PI * x); }
+float lpfTap(int k, float fcn) {
+  float fk = float(k);
+  return 2.0 * fcn * sinc(2.0 * fcn * fk) * (0.54 + 0.46 * cos(PI * fk / float(TAP_RADIUS + 1)));
+}
+
+void main() {
+  int n    = int(floor(vUv.x * uSize.x));
+  int line = clamp(int(floor(vUv.y * uSize.y)), 0, int(uSize.y) - 1);
+
+  // 帯域制限した複素雑音（分散1に正規化）
+  vec2 noise = vec2(0.0);
+  float norm = 0.0;
+  for (int k = -TAP_RADIUS; k <= TAP_RADIUS; ++k) {
+    float w = lpfTap(k, uIfCutoff);
+    noise += noiseIQ(line, n + k) * w;
+    norm  += w * w;
+  }
+  noise /= sqrt(max(norm, 1.0e-6));
+
+  if (uHasVideo < 0.5) {
+    // ---- 砂嵐のみ（1.1 版と等価）----
+    float env = length(noise);
+    float wobble = 1.0 + uJitter * (hashF(uFieldSeed * 7919u + uint(line) * 131u) - 0.5);
+    float video = 1.0 - env * (uSnowLevel / 1.2533141) * wobble;
+    fragColor = vec4(clamp(video, 0.0, 1.0), 0.0, 0.0, 1.0);
+    return;
+  }
+
+  // ---- 映像入力（ライス検波）----
+  // 格納時に 0.5 中心・0.375 スケールしたコンポジットを信号領域へ戻す。
+  float stored = texelFetch(uComposite, ivec2(n, line), 0).r;
+  float composite = (stored - 0.5) / 0.375;   // [-1.33, 1.33] 相当へ復元
+
+  // ライス検波: 搬送波(1+composite)を電界強度で振幅変調し、雑音を重畳して包絡線検波。
+  //   fieldStrength=1: A≈1+composite, 雑音は noiseFloor のみ → クリアな映像
+  //   fieldStrength=0: A≈0, 雑音のみ → レイリー分布（砂嵐）へ連続一致
+  float sigma = mix(1.0, uNoiseFloor, uFieldStrength);
+  float A = uFieldStrength * (1.0 + composite);
+  float re = A + noise.x * sigma;
+  float im = noise.y * sigma;
+  float env = sqrt(re * re + im * im);
+
+  // 強電界: 搬送波ぶん(fieldStrength)を差し引いて composite を取り出す。
+  //   ただし弱電界では除算が発散するため、砂嵐の負変調式へ連続的にブレンドする。
+  float videoDetected = (env - uFieldStrength) / max(uFieldStrength, 0.15);
+  float snowDetected  = 1.0 - env * (uSnowLevel / 1.2533141);
+  float detected = mix(snowDetected, videoDetected, smoothstep(0.0, 0.35, uFieldStrength));
+
+  fragColor = vec4(clamp(detected, 0.0, 1.0), 0.0, 0.0, 1.0);
+}
+`;
+
+/* ===== src/shaders/DecoderFragment.js ===== */
+// Pass C: NTSC デコーダ本体。
+//   輝度: Y/C 分離方式に応じて取り出す（バンドパス／2ラインコム／3ラインコム）。
+//   色  : 3.58MHz 帯を同期検波して I/Q を取り出す。4fsc サンプリングなので
+//         副搬送波の位相は 1 サンプルあたり pi/2 ずつ進む。
+//   カラーキラーが働く場合は色が殺され、砂嵐はモノクロになる。
+//
+// 隣接走査線は副搬送波位相が反転している（1H=910sampで π ずれる）。
+// この性質を使い、ライン間の和で C を打ち消して Y を、差で Y を打ち消して C を得る。
+
+const DECODER_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uDetector;
+uniform vec2  uSize;
+uniform float uLumaCutoff;    // 映像帯域 / fs
+uniform float uChromaCutoff;  // 色復調後 LPF / fs
+uniform float uChromaGain;
+uniform float uChromaPhase;   // 局部発振の位相 [rad]
+uniform float uContrast;
+uniform float uBrightness;
+uniform float uYcMode;        // 0: バンドパス, 1: 2ラインコム, 2: 3ラインコム
+uniform float uFieldBasePhase; // エンコーダと共有するフィールド基準位相
+uniform float uBurstPhase;
+
+const float PI = 3.141592653589793;
+const int   LUMA_R   = 8;
+const int   CHROMA_R = 12;
+
+float sinc(float x) { return abs(x) < 1.0e-5 ? 1.0 : sin(PI * x) / (PI * x); }
+float window(int k, int radius) { return 0.54 + 0.46 * cos(PI * float(k) / float(radius + 1)); }
+
+float composite(int n, int line) {
+  int nx = clamp(n, 0, int(uSize.x) - 1);
+  int ny = clamp(line, 0, int(uSize.y) - 1);
+  return texelFetch(uDetector, ivec2(nx, ny), 0).r;
+}
+
+// バンドパス方式の Y: 単純ローパス（C が輝度に残る＝ドット/クロスルミナンス）
+float lumaBandpass(int n, int line) {
+  float acc = 0.0, norm = 0.0;
+  for (int k = -LUMA_R; k <= LUMA_R; ++k) {
+    float w = 2.0 * uLumaCutoff * sinc(2.0 * uLumaCutoff * float(k)) * window(k, LUMA_R);
+    acc += composite(n + k, line) * w; norm += w;
+  }
+  return acc / max(norm, 1.0e-6);
+}
+
+void main() {
+  int n    = int(floor(vUv.x * uSize.x));
+  int line = clamp(int(floor(vUv.y * uSize.y)), 0, int(uSize.y) - 1);
+
+  // --- 輝度（Y/C 分離） ---
+  float luma;
+  if (uYcMode < 0.5) {
+    luma = lumaBandpass(n, line);
+  } else if (uYcMode < 1.5) {
+    // 2 ラインコム: (現在 + 1本前)/2 で C を相殺 → Y。残差を LPF で整える。
+    float acc = 0.0, norm = 0.0;
+    for (int k = -LUMA_R; k <= LUMA_R; ++k) {
+      float w = 2.0 * uLumaCutoff * sinc(2.0 * uLumaCutoff * float(k)) * window(k, LUMA_R);
+      float s = 0.5 * (composite(n + k, line) + composite(n + k, line - 1));
+      acc += s * w; norm += w;
+    }
+    luma = acc / max(norm, 1.0e-6);
+  } else {
+    // 3 ラインコム: (上 + 2*中 + 下)/4 で C を相殺。
+    float acc = 0.0, norm = 0.0;
+    for (int k = -LUMA_R; k <= LUMA_R; ++k) {
+      float w = 2.0 * uLumaCutoff * sinc(2.0 * uLumaCutoff * float(k)) * window(k, LUMA_R);
+      float s = 0.25 * (composite(n + k, line - 1) + 2.0 * composite(n + k, line) + composite(n + k, line + 1));
+      acc += s * w; norm += w;
+    }
+    luma = acc / max(norm, 1.0e-6);
+  }
+
+  // --- 色差（同期検波 + 復調後 LPF） ---
+  // コム方式では現在ラインと隣接ラインの差から C を取り出す（Y を相殺）。
+  float linePhase = uFieldBasePhase + (((line & 1) == 1) ? PI : 0.0);
+  float ci = 0.0, cq = 0.0, chromaNorm = 0.0;
+  for (int k = -CHROMA_R; k <= CHROMA_R; ++k) {
+    float w = 2.0 * uChromaCutoff * sinc(2.0 * uChromaCutoff * float(k)) * window(k, CHROMA_R);
+    float s;
+    if (uYcMode < 0.5) {
+      s = composite(n + k, line);
+    } else if (uYcMode < 1.5) {
+      s = 0.5 * (composite(n + k, line) - composite(n + k, line - 1));
+    } else {
+      s = composite(n + k, line) - 0.5 * (composite(n + k, line - 1) + composite(n + k, line + 1));
+    }
+    float ph = 0.5 * PI * float(n + k) + linePhase + uBurstPhase + uChromaPhase;
+    ci += s * cos(ph) * w;
+    cq += s * sin(ph) * w;
+    chromaNorm += w;
+  }
+  float inv = 2.0 / max(chromaNorm, 1.0e-6);
+  ci *= inv * uChromaGain;
+  cq *= inv * uChromaGain;
+
+  float Y = luma * uContrast + uBrightness;
+
+  vec3 rgb = vec3(
+    Y + 0.9563 * ci + 0.6210 * cq,
+    Y - 0.2721 * ci - 0.6474 * cq,
+    Y - 1.1070 * ci + 1.7046 * cq
+  );
+
+  fragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0);
+}
+`;
+
+/* ===== src/shaders/DisplayFragment.js ===== */
+// Pass 3: CRT 表示の再現。
+//   2 レイヤーのフィールドテクスチャを走査線パリティで織り合わせ（インターレース）、
+//   電子ビームのスポット径によるにじみ、蛍光体の残光、走査線、
+//   画面曲率・周辺光量落ちを適用する。
+//
+// 最適化:
+//   ・フィールドを sampler2DArray にまとめ、1 走査線あたりのフェッチを半減
+//   ・水平スポットはバイリニア補間を利用した 2 タップで [0.25, 0.5, 0.25] 相当を得る
+//   ・走査線表現は 1 走査線あたり 3 画素以上ないと標本化定理上そもそも表現できないため、
+//     解像度に応じて自動的にフェードさせる
+
+const DISPLAY_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform highp sampler2DArray uFields;  // レイヤ0: 偶数フィールド / レイヤ1: 奇数フィールド
+uniform sampler2D uPrev;               // 前フレーム（残光用）
+
+uniform vec2  uFieldSize;    // (サンプル数, 走査線数/フィールド)
+uniform float uActiveLines;  // フレームあたり有効走査線数
+uniform float uInterlaceOn;
+uniform float uPersistence;
+uniform float uSpotV;        // 走査線単位
+uniform float uSpotH;        // サンプル単位
+uniform float uScanline;
+uniform float uCurvature;
+uniform float uVignette;
+uniform float uOverscan;
+uniform float uPixelsPerLine;
+uniform float uWarmup;      // 0:消灯 1:通常。輝度の立ち上がり
+uniform float uCollapseV;   // 1:通常 0:横一本線につぶれる（垂直偏向停止）
+uniform float uCollapseH;   // 1:通常 0:中央の輝点へ収束（水平偏向停止）
+uniform float uFlash;       // 消灯時の輝線フラッシュ量
+
+vec2 curve(vec2 uv, float amount) {
+  vec2 c = uv * 2.0 - 1.0;
+  float r2 = dot(c, c);
+  c *= 1.0 + amount * r2;
+  return c * 0.5 + 0.5;
+}
+
+// バイリニア補間を使い、2 フェッチで水平方向のスポット径を表現する
+vec3 sampleLine(int lineIndex, float x) {
+  float layer = uInterlaceOn < 0.5 ? 0.0 : float(lineIndex - (lineIndex / 2) * 2);
+  float row = (floor(float(lineIndex) * 0.5) + 0.5) / uFieldSize.y;
+  float dx = uSpotH * 0.5 / uFieldSize.x;
+  vec3 a = texture(uFields, vec3(x - dx, row, layer)).rgb;
+  vec3 b = texture(uFields, vec3(x + dx, row, layer)).rgb;
+  return (a + b) * 0.5;
+}
+
+void main() {
+  vec2 uv = curve(vUv, uCurvature);
+  vec2 edge = step(vec2(0.0), uv) * step(uv, vec2(1.0));
+  float inScreen = edge.x * edge.y;
+
+  uv = (uv - 0.5) * (1.0 - uOverscan * 2.0) + 0.5;
+
+  // 電源つぶれ演出: 垂直・水平方向に中央へ収束させる。
+  //   collapseV<1 で縦がつぶれて横一本線に、collapseH<1 で中央の輝点へ。
+  // uv を中央から拡大して参照することで、画面内容が中央の細い帯に圧縮される。
+  float cV = max(uCollapseV, 0.0025);
+  float cH = max(uCollapseH, 0.0025);
+  uv.y = (uv.y - 0.5) / cV + 0.5;
+  uv.x = (uv.x - 0.5) / cH + 0.5;
+  // 収束帯の外側は黒
+  float bandMask = step(0.0, uv.y) * step(uv.y, 1.0) * step(0.0, uv.x) * step(uv.x, 1.0);
+
+  float lineF = (1.0 - uv.y) * uActiveLines - 0.5;
+  int base = int(floor(lineF));
+  int maxLine = int(uActiveLines);
+
+  vec3 col = vec3(0.0);
+  float wsum = 0.0;
+  float sigma = max(uSpotV, 0.15);
+  for (int d = -1; d <= 2; ++d) {
+    int li = base + d;
+    if (li < 0 || li >= maxLine) continue;
+    float dist = float(li) - lineF;
+    float w = exp(-0.5 * (dist * dist) / (sigma * sigma));
+    col += sampleLine(li, uv.x) * w;
+    wsum += w;
+  }
+  col /= max(wsum, 1.0e-5);
+
+  // 走査線の見え。1 走査線が 2 画素未満になる解像度ではモアレが出るので弱める。
+  float visibility = uScanline * smoothstep(2.2, 3.0, uPixelsPerLine);
+  float phase = fract(lineF);
+  col *= 1.0 - visibility * (0.5 - 0.5 * cos(6.2831853 * phase));
+
+  // 蛍光体の残光: 減衰した前フレームとの max 合成
+  vec3 prev = texture(uPrev, vUv).rgb;
+  col = max(col, prev * uPersistence);
+
+  // 周辺光量落ち
+  vec2 v = vUv * 2.0 - 1.0;
+  float vig = 1.0 - uVignette * dot(v, v) * 0.55;
+  col *= clamp(vig, 0.0, 1.0);
+
+  // 収束帯の外は黒。つぶれるほど帯が明るくなる（電荷が集中する演出）。
+  col *= bandMask;
+  col += vec3(uFlash) * bandMask;
+
+  // ウォームアップ: 立ち上がり中は暗く、中央から明るくなる。
+  float centerGlow = 1.0 - dot(v, v) * 0.6;
+  float warm = clamp(uWarmup * 1.4 - 0.4, 0.0, 1.0) * mix(0.4, 1.0, clamp(centerGlow, 0.0, 1.0));
+  col *= mix(0.0, 1.0, clamp(warm + uWarmup * 0.2, 0.0, 1.0));
+
+  fragColor = vec4(col * inScreen, 1.0);
+}
+`;
+
+/* ===== src/shaders/PresentFragment.js ===== */
+// Pass 4: 残光バッファをキャンバスへ転送する。
+// ブルームは既定で無効化できるようにし、不要なときは 1 フェッチで済ませる。
+
+const PRESENT_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uSource;
+uniform vec2  uTexel;
+uniform float uBloom;
+uniform float uGamma;
+
+void main() {
+  vec3 col = texture(uSource, vUv).rgb;
+
+  if (uBloom > 0.002) {
+    vec3 blur = vec3(0.0);
+    blur += texture(uSource, vUv + vec2( uTexel.x * 2.0, 0.0)).rgb;
+    blur += texture(uSource, vUv + vec2(-uTexel.x * 2.0, 0.0)).rgb;
+    blur += texture(uSource, vUv + vec2(0.0,  uTexel.y * 2.0)).rgb;
+    blur += texture(uSource, vUv + vec2(0.0, -uTexel.y * 2.0)).rgb;
+    col += blur * (0.25 * uBloom);
+  }
+
+  fragColor = vec4(pow(clamp(col, 0.0, 1.0), vec3(uGamma)), 1.0);
+}
+`;
+
+/* ===== src/gl/GLContext.js ===== */
+// WebGL2 コンテキストの取得のみを担当する。
+
+function createGLContext(canvas) {
+  const gl = canvas.getContext('webgl2', {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    preserveDrawingBuffer: false,
+    powerPreference: 'high-performance',
+  });
+  if (!gl) throw new Error('WebGL2 が利用できません。');
+  gl.disable(gl.DEPTH_TEST);
+  gl.disable(gl.BLEND);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  return gl;
+}
+
+function resizeCanvasToDisplay(canvas, gl, internalWidth, internalHeight) {
+  if (canvas.width !== internalWidth || canvas.height !== internalHeight) {
+    canvas.width = internalWidth;
+    canvas.height = internalHeight;
+  }
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+
+// ソフトウェアレンダラ（SwiftShader 等）へフォールバックしていないかの確認用
+function queryRendererName(gl) {
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = ext
+    ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
+    : gl.getParameter(gl.RENDERER);
+  return String(name || 'unknown').slice(0, 64);
+}
+
+/* ===== src/gl/ShaderProgram.js ===== */
+// GLSL のコンパイル / リンク / uniform 設定を担当する。
+// 呼び出し側は型を意識せず setUniforms({name: value}) で渡せる。
+
+function compile(gl, type, source) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, source);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(sh);
+    gl.deleteShader(sh);
+    throw new Error('シェーダのコンパイルに失敗しました:\n' + log);
+  }
+  return sh;
+}
+
+class ShaderProgram {
+  constructor(gl, vertexSource, fragmentSource) {
+    this.gl = gl;
+    const vs = compile(gl, gl.VERTEX_SHADER, vertexSource);
+    const fs = compile(gl, gl.FRAGMENT_SHADER, fragmentSource);
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.bindAttribLocation(program, 0, 'aPos');
+    gl.linkProgram(program);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const log = gl.getProgramInfoLog(program);
+      gl.deleteProgram(program);
+      throw new Error('シェーダのリンクに失敗しました:\n' + log);
+    }
+    this.program = program;
+    this.locations = new Map();
+  }
+
+  location(name) {
+    if (!this.locations.has(name)) {
+      this.locations.set(name, this.gl.getUniformLocation(this.program, name));
+    }
+    return this.locations.get(name);
+  }
+
+  use() {
+    this.gl.useProgram(this.program);
+    return this;
+  }
+
+  setUniforms(values) {
+    const gl = this.gl;
+    for (const name in values) {
+      const loc = this.location(name);
+      if (loc === null) continue;
+      const v = values[name];
+      if (typeof v === 'number') {
+        gl.uniform1f(loc, v);
+      } else if (typeof v === 'boolean') {
+        gl.uniform1i(loc, v ? 1 : 0);
+      } else if (Array.isArray(v)) {
+        if (v.length === 2) gl.uniform2f(loc, v[0], v[1]);
+        else if (v.length === 3) gl.uniform3f(loc, v[0], v[1], v[2]);
+        else if (v.length === 4) gl.uniform4f(loc, v[0], v[1], v[2], v[3]);
+      }
+    }
+    return this;
+  }
+
+  setUnsigned(name, value) {
+    const loc = this.location(name);
+    if (loc !== null) this.gl.uniform1ui(loc, value >>> 0);
+    return this;
+  }
+
+  setTexture(name, texture, unit, target) {
+    const gl = this.gl;
+    const loc = this.location(name);
+    if (loc === null) return this;
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(target || gl.TEXTURE_2D, texture);
+    gl.uniform1i(loc, unit);
+    return this;
+  }
+
+  dispose() {
+    this.gl.deleteProgram(this.program);
+  }
+}
+
+/* ===== src/gl/RenderTarget.js ===== */
+// オフスクリーン描画先（テクスチャ + FBO）を管理する。
+
+class RenderTarget {
+  constructor(gl, width, height, options = {}) {
+    this.gl = gl;
+    this.width = width;
+    this.height = height;
+    const filter = options.linear === false ? gl.NEAREST : gl.LINEAR;
+
+    this.texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    this.framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) {
+      throw new Error('フレームバッファの作成に失敗しました: 0x' + status.toString(16));
+    }
+  }
+
+  bind() {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+    gl.viewport(0, 0, this.width, this.height);
+  }
+
+  resize(width, height) {
+    if (this.width === width && this.height === height) return;
+    const gl = this.gl;
+    this.width = width;
+    this.height = height;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  }
+
+  dispose() {
+    this.gl.deleteTexture(this.texture);
+    this.gl.deleteFramebuffer(this.framebuffer);
+  }
+}
+
+function bindScreen(gl, width, height) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, width, height);
+}
+
+/* ===== src/gl/ArrayRenderTarget.js ===== */
+// フィールドバッファをテクスチャ配列 1 枚にまとめる。
+//
+// 2 枚の 2D テクスチャに分けると、表示パスで両方をフェッチして mix する必要があり
+// テクスチャフェッチ数が 2 倍になっていた。配列にすればレイヤ指定 1 回で済む。
+
+class ArrayRenderTarget {
+  constructor(gl, width, height, layers) {
+    this.gl = gl;
+    this.width = width;
+    this.height = height;
+    this.layers = layers;
+
+    this.texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, width, height, layers);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    this.framebuffers = [];
+    for (let i = 0; i < layers; i += 1) {
+      const fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.texture, 0, i);
+      const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+      if (status !== gl.FRAMEBUFFER_COMPLETE) {
+        throw new Error('テクスチャ配列のフレームバッファ作成に失敗しました: 0x' + status.toString(16));
+      }
+      this.framebuffers.push(fb);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  bindLayer(index) {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[index]);
+    gl.viewport(0, 0, this.width, this.height);
+  }
+
+  clear() {
+    const gl = this.gl;
+    for (let i = 0; i < this.layers; i += 1) {
+      this.bindLayer(i);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+  }
+
+  dispose() {
+    this.gl.deleteTexture(this.texture);
+    this.framebuffers.forEach((fb) => this.gl.deleteFramebuffer(fb));
+  }
+}
+
+/* ===== src/gl/QuadRenderer.js ===== */
+// 全画面を覆う三角形を 1 枚だけ持ち、各パスの描画に使い回す。
+
+class QuadRenderer {
+  constructor(gl) {
+    this.gl = gl;
+    this.vao = gl.createVertexArray();
+    this.buffer = gl.createBuffer();
+    gl.bindVertexArray(this.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+  }
+
+  draw() {
+    const gl = this.gl;
+    gl.bindVertexArray(this.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+  }
+
+  dispose() {
+    this.gl.deleteVertexArray(this.vao);
+    this.gl.deleteBuffer(this.buffer);
+  }
+}
+
+/* ===== src/capture/ScreenCapture.js ===== */
+// getDisplayMedia のライフサイクルのみを管理する。
+// WebGL は知らない。停止・エラー・トラック終了をコールバックで通知する。
+
+class ScreenCapture {
+  constructor() {
+    this.stream = null;
+    this.video = null;
+    this.onStateChange = null;
+    this.frameReady = false;    // 新しい映像フレームが届いたか
+    this.rvfcHandle = 0;        // requestVideoFrameCallback のハンドル
+    this.useRvfc = false;
+  }
+
+  get isActive() {
+    return this.stream !== null;
+  }
+
+  get isSupported() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  }
+
+  notify(state, detail) {
+    if (this.onStateChange) this.onStateChange(state, detail);
+  }
+
+  async start() {
+    if (!this.isSupported) {
+      this.notify('error', 'このブラウザは画面キャプチャに対応していません。');
+      return false;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 60 },
+        audio: false,
+      });
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      await video.play();
+
+      stream.getVideoTracks().forEach((track) => {
+        track.addEventListener('ended', () => this.stop());
+      });
+
+      this.stream = stream;
+      this.video = video;
+      this.startFrameTracking(video);
+      this.notify('started', video);
+      return true;
+    } catch (err) {
+      const msg = err && err.name === 'NotAllowedError'
+        ? 'キャプチャがキャンセルされました。'
+        : 'キャプチャを開始できませんでした: ' + (err && err.message ? err.message : err);
+      this.notify('error', msg);
+      return false;
+    }
+  }
+
+  // 新フレーム到着を requestVideoFrameCallback で検出する。
+  // 未対応ブラウザでは毎フレーム転送にフォールバックする。
+  startFrameTracking(video) {
+    this.frameReady = true;   // 最初の 1 枚は必ず転送する
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      this.useRvfc = true;
+      const onFrame = () => {
+        this.frameReady = true;
+        if (this.video === video) {
+          this.rvfcHandle = video.requestVideoFrameCallback(onFrame);
+        }
+      };
+      this.rvfcHandle = video.requestVideoFrameCallback(onFrame);
+    } else {
+      this.useRvfc = false;   // 毎フレーム転送（hasFrame 側で判定）
+    }
+  }
+
+  // 転送すべき新フレームがあるか。rVFC 対応時は到着したときだけ true。
+  consumeFrameReady() {
+    if (!this.useRvfc) return this.hasFrame;   // 非対応: 毎フレーム
+    if (!this.frameReady) return false;
+    this.frameReady = false;
+    return this.hasFrame;
+  }
+
+  stop() {
+    if (!this.stream) return;
+    if (this.video && this.rvfcHandle && typeof this.video.cancelVideoFrameCallback === 'function') {
+      this.video.cancelVideoFrameCallback(this.rvfcHandle);
+    }
+    this.rvfcHandle = 0;
+    this.frameReady = false;
+    this.stream.getTracks().forEach((track) => track.stop());
+    if (this.video) {
+      this.video.srcObject = null;
+      this.video = null;
+    }
+    this.stream = null;
+    this.notify('stopped', null);
+  }
+
+  // 現フレームが転送可能かどうか
+  get hasFrame() {
+    return !!this.video && this.video.readyState >= 2 && this.video.videoWidth > 0;
+  }
+
+  get frameSize() {
+    if (!this.video) return [0, 0];
+    return [this.video.videoWidth, this.video.videoHeight];
+  }
+}
+
+/* ===== src/capture/VideoTexture.js ===== */
+// <video> 要素の現フレームを WebGL テクスチャへ転送する。
+// MediaStream のライフサイクルは知らない（ScreenCapture 側の責務）。
+
+class VideoTexture {
+  constructor(gl) {
+    this.gl = gl;
+    this.texture = gl.createTexture();
+    this.width = 0;
+    this.height = 0;
+
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    // 1x1 の黒で初期化しておく（映像未取得時はこれが入力になる）
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 255]));
+  }
+
+  // video の現フレームを取り込む。成功時 true。
+  update(video) {
+    if (!video || video.readyState < 2 || video.videoWidth === 0) return false;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+    this.width = video.videoWidth;
+    this.height = video.videoHeight;
+    return true;
+  }
+
+  // 映像を手放したときに黒へ戻す
+  clearToBlack() {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 255]));
+    this.width = 0;
+    this.height = 0;
+  }
+
+  get aspect() {
+    return this.height > 0 ? this.width / this.height : 4 / 3;
+  }
+
+  dispose() {
+    this.gl.deleteTexture(this.texture);
+  }
+}
+
+/* ===== src/capture/CaptureCoordinator.js ===== */
+// ScreenCapture（MediaStream）と VideoTexture（WebGL）を仲介する。
+// AppController からはこのファサード 1 つだけを扱う。
+
+
+class CaptureCoordinator {
+  constructor(gl) {
+    this.capture = new ScreenCapture();
+    this.texture = new VideoTexture(gl);
+    this.onStatus = null;
+    this.capture.onStateChange = (state, detail) => this.handleState(state, detail);
+  }
+
+  get videoTexture() {
+    return this.texture;
+  }
+
+  get isSupported() {
+    return this.capture.isSupported;
+  }
+
+  get isActive() {
+    return this.capture.isActive;
+  }
+
+  handleState(state, detail) {
+    if (state === 'stopped' || state === 'error') this.texture.clearToBlack();
+    if (this.onStatus) this.onStatus(state, detail);
+  }
+
+  async toggle() {
+    if (this.capture.isActive) {
+      this.capture.stop();
+      return false;
+    }
+    return this.capture.start();
+  }
+
+  stop() {
+    this.capture.stop();
+  }
+
+  // 毎フレーム呼ぶ。新しい映像フレームが届いたときだけ転送する。
+  // 転送を省いても直近のテクスチャが残るため、映像は途切れない。
+  update() {
+    if (!this.capture.isActive) return false;
+    if (this.capture.consumeFrameReady()) this.texture.update(this.capture.video);
+    return true;
+  }
+
+  dispose() {
+    this.capture.stop();
+    this.texture.dispose();
+  }
+}
+
+/* ===== src/pipeline/FieldScheduler.js ===== */
+// 59.94Hz のフィールド更新タイミングを刻む。
+// 表示リフレッシュ(60Hz等)との差から、実機同様のわずかな「うなり」が出る。
+
+const MAX_CATCH_UP_FIELDS = 3;
+
+class FieldScheduler {
+  constructor() {
+    this.fieldPeriod = 1.0 / NTSC.FIELD_RATE_HZ;
+    this.accumulator = 0.0;
+    this.fieldCount = 0;
+    this.lastTimestamp = 0;
+  }
+
+  reset(timestamp) {
+    this.accumulator = 0.0;
+    this.lastTimestamp = timestamp;
+  }
+
+  // 経過時間を与えると、今フレームで進めるべきフィールド数を返す
+  advance(timestamp) {
+    let dt = (timestamp - this.lastTimestamp) / 1000.0;
+    this.lastTimestamp = timestamp;
+    if (!Number.isFinite(dt) || dt <= 0) return 0;
+    if (dt > 0.25) dt = 0.25;
+
+    this.accumulator += dt;
+    let fields = 0;
+    while (this.accumulator >= this.fieldPeriod && fields < MAX_CATCH_UP_FIELDS) {
+      this.accumulator -= this.fieldPeriod;
+      fields += 1;
+    }
+    if (fields >= MAX_CATCH_UP_FIELDS) this.accumulator = 0.0;
+    this.fieldCount += fields;
+    return fields;
+  }
+
+  nextSeed() {
+    // フィールドごとに散らばるシード
+    return ((this.fieldCount * 2654435761) ^ 0x5bf03635) >>> 0;
+  }
+
+  get elapsedSeconds() {
+    return this.fieldCount * this.fieldPeriod;
+  }
+}
+
+/* ===== src/pipeline/FieldRenderer.js ===== */
+// 1 フィールドぶんの信号処理チェーンを担当する。
+//   映像なし: 雑音生成 → 検波(砂嵐) → デコード
+//   映像あり: 雑音生成 → エンコード → ライス検波 → デコード
+// 表示・タイミングは扱わない。
+
+
+
+
+
+
+
+
+const CHROMA_DEMOD_LPF_HZ = 600000.0;
+const MHZ = 1.0e6;
+
+class FieldRenderer {
+  constructor(gl, quad) {
+    this.gl = gl;
+    this.quad = quad;
+    this.size = [TEXTURE_SIZE.FIELD_WIDTH, TEXTURE_SIZE.FIELD_HEIGHT];
+
+    this.noiseProgram = new ShaderProgram(gl, QUAD_VERTEX_SOURCE, NOISE_FRAGMENT_SOURCE);
+    this.encoderProgram = new ShaderProgram(gl, QUAD_VERTEX_SOURCE, ENCODER_FRAGMENT_SOURCE);
+    this.detectorProgram = new ShaderProgram(gl, QUAD_VERTEX_SOURCE, RICE_DETECTOR_FRAGMENT_SOURCE);
+    this.decoderProgram = new ShaderProgram(gl, QUAD_VERTEX_SOURCE, DECODER_FRAGMENT_SOURCE);
+
+    const w = TEXTURE_SIZE.FIELD_WIDTH;
+    const h = TEXTURE_SIZE.FIELD_HEIGHT;
+    this.noiseTarget = new RenderTarget(gl, w, h, { linear: false });
+    this.compositeTarget = new RenderTarget(gl, w, h, { linear: false });
+    this.detectorTarget = new RenderTarget(gl, w, h, { linear: false });
+
+    this.chromaPhase = 0.0;
+    this.fieldIndex4 = 0;   // 0..3 の 4 フィールドシーケンス
+  }
+
+  // フィールド境界で進める位相状態
+  advancePhase(chromaDrift, fieldPeriodSec, hasVideo) {
+    // 映像入力時は局部発振がバーストにロックするため、蓄積した位相を 0 へ戻す。
+    this.chromaPhase = hasVideo
+      ? 0.0
+      : (this.chromaPhase + chromaDrift * fieldPeriodSec) % (Math.PI * 2);
+    this.fieldIndex4 = (this.fieldIndex4 + 1) & 3;
+  }
+
+  drawNoise(seed) {
+    this.noiseTarget.bind();
+    this.noiseProgram.use().setUniforms({ uSize: this.size });
+    this.noiseProgram.setUnsigned('uFieldSeed', seed);
+    this.quad.draw();
+  }
+
+  drawEncode(params, videoTexture, hasVideo) {
+    if (!hasVideo) return;
+    this.compositeTarget.bind();
+    this.encoderProgram.use().setUniforms({
+      uSize: this.size,
+      uLumaCutoff: (params.lumaBandwidth * MHZ) / NTSC.SAMPLE_RATE_HZ,
+      uCutoffI: (params.chromaBandI * MHZ) / NTSC.SAMPLE_RATE_HZ,
+      uCutoffQ: (params.chromaBandQ * MHZ) / NTSC.SAMPLE_RATE_HZ,
+      uChromaGain: params.encChromaGain,
+      uBurstPhase: BURST_PHASE_RAD,
+      uFieldBasePhase: fieldBasePhase(this.fieldIndex4),
+      uAspectMode: params.aspectMode,
+      uInputAspect: videoTexture.aspect,
+    });
+    this.encoderProgram.setTexture('uVideo', videoTexture.texture, 0);
+    this.quad.draw();
+  }
+
+  drawDetect(params, seed, hasVideo) {
+    this.detectorTarget.bind();
+    this.detectorProgram.use().setUniforms({
+      uSize: this.size,
+      uIfCutoff: (params.ifBandwidth * MHZ * 0.5) / NTSC.SAMPLE_RATE_HZ,
+      uFieldStrength: params.fieldStrength,
+      uNoiseFloor: params.noiseFloor,
+      uJitter: params.agcJitter,
+      uHasVideo: hasVideo ? 1.0 : 0.0,
+      uSnowLevel: params.agcLevel,
+    });
+    this.detectorProgram.setUnsigned('uFieldSeed', seed);
+    this.detectorProgram.setTexture('uNoise', this.noiseTarget.texture, 0);
+    this.detectorProgram.setTexture('uComposite', this.compositeTarget.texture, 1);
+    this.quad.draw();
+  }
+
+  drawDecode(params, targetBinder) {
+    const killerOn = params.colorKiller > 0.5;
+    targetBinder();
+    this.decoderProgram.use().setUniforms({
+      uSize: this.size,
+      uLumaCutoff: (params.lumaBandwidth * MHZ) / NTSC.SAMPLE_RATE_HZ,
+      uChromaCutoff: CHROMA_DEMOD_LPF_HZ / NTSC.SAMPLE_RATE_HZ,
+      uChromaGain: killerOn ? 0.0 : params.chromaGain,
+      uChromaPhase: this.chromaPhase,
+      uContrast: params.contrast,
+      uBrightness: params.brightness,
+      uYcMode: params.ycSeparation,
+      uFieldBasePhase: fieldBasePhase(this.fieldIndex4),
+      uBurstPhase: BURST_PHASE_RAD,
+    });
+    this.decoderProgram.setTexture('uDetector', this.detectorTarget.texture, 0);
+    this.quad.draw();
+  }
+
+  clear() {
+    const gl = this.gl;
+    for (const t of [this.noiseTarget, this.compositeTarget, this.detectorTarget]) {
+      t.bind();
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+  }
+
+  dispose() {
+    [this.noiseProgram, this.encoderProgram, this.detectorProgram, this.decoderProgram]
+      .forEach((p) => p.dispose());
+    this.noiseTarget.dispose();
+    this.compositeTarget.dispose();
+    this.detectorTarget.dispose();
+  }
+}
+
+/* ===== src/pipeline/PowerEnvelope.js ===== */
+// ブラウン管の電源投入・切断の物理挙動を時間で表現する状態機械。
+// 表示シェーダへ渡す 4 値（warmup, collapseV, collapseH, flash）を生成する。
+// WebGL も DOM も知らない。
+
+const WARMUP_SEC = 1.5;      // ヒーターが温まり映像が立ち上がるまで
+const COLLAPSE_V_SEC = 0.13; // 縦がつぶれて横一本線になるまで（速い）
+const COLLAPSE_H_SEC = 0.28; // 輝線が中央の輝点へ収束するまで
+const AFTERGLOW_SEC = 0.55;  // 輝点が残光で消えるまで
+
+const PowerState = Object.freeze({
+  OFF: 'off',
+  WARMING: 'warming',
+  ON: 'on',
+  SHUTTING: 'shutting',
+});
+
+class PowerEnvelope {
+  constructor() {
+    this.state = PowerState.OFF;
+    this.elapsed = 0.0;
+    this.onShutdownComplete = null;
+  }
+
+  get isVisible() {
+    return this.state !== PowerState.OFF;
+  }
+
+  // 実際の信号処理を回すべきか（消灯・収束後は不要）
+  get shouldRender() {
+    return this.state === PowerState.WARMING || this.state === PowerState.ON
+      || this.state === PowerState.SHUTTING;
+  }
+
+  powerOn() {
+    if (this.state === PowerState.ON || this.state === PowerState.WARMING) return;
+    this.state = PowerState.WARMING;
+    this.elapsed = 0.0;
+  }
+
+  // 切断を開始する（完了時に onShutdownComplete を呼ぶ）
+  powerOff() {
+    if (this.state === PowerState.OFF) return;
+    this.state = PowerState.SHUTTING;
+    this.elapsed = 0.0;
+  }
+
+  update(dtSec) {
+    this.elapsed += dtSec;
+    if (this.state === PowerState.WARMING && this.elapsed >= WARMUP_SEC) {
+      this.state = PowerState.ON;
+    } else if (this.state === PowerState.SHUTTING) {
+      const total = COLLAPSE_V_SEC + COLLAPSE_H_SEC + AFTERGLOW_SEC;
+      if (this.elapsed >= total) {
+        this.state = PowerState.OFF;
+        if (this.onShutdownComplete) this.onShutdownComplete();
+      }
+    }
+  }
+
+  // シェーダ uniform 値
+  uniforms() {
+    switch (this.state) {
+      case PowerState.WARMING: {
+        const t = Math.min(this.elapsed / WARMUP_SEC, 1.0);
+        // ゆっくり立ち上がり、最後に一気に明るくなる曲線
+        const warm = t * t * (3.0 - 2.0 * t);
+        return { uWarmup: warm, uCollapseV: 1.0, uCollapseH: 1.0, uFlash: 0.0 };
+      }
+      case PowerState.ON:
+        return { uWarmup: 1.0, uCollapseV: 1.0, uCollapseH: 1.0, uFlash: 0.0 };
+      case PowerState.SHUTTING:
+        return this.shutdownUniforms();
+      default:
+        return { uWarmup: 0.0, uCollapseV: 1.0, uCollapseH: 1.0, uFlash: 0.0 };
+    }
+  }
+
+  // 3 段階の切断: 縦つぶれ → 横収束 → 残光
+  shutdownUniforms() {
+    const t = this.elapsed;
+    if (t < COLLAPSE_V_SEC) {
+      // 縦つぶれ: 偏向エネルギーが指数減衰するので最初速く最後ゆっくり。
+      const p = easeOutExpo(t / COLLAPSE_V_SEC);
+      return { uWarmup: 1.0, uCollapseV: 1.0 - p, uCollapseH: 1.0, uFlash: p * 0.6 };
+    }
+    if (t < COLLAPSE_V_SEC + COLLAPSE_H_SEC) {
+      // 横収束も同様に急峻に始まってから緩む。
+      const p = easeOutExpo((t - COLLAPSE_V_SEC) / COLLAPSE_H_SEC);
+      return { uWarmup: 1.0, uCollapseV: 0.0, uCollapseH: 1.0 - p, uFlash: 0.6 + p * 0.4 };
+    }
+    // 残光: 中央の輝点が指数的に減衰して消える。
+    const p = (t - COLLAPSE_V_SEC - COLLAPSE_H_SEC) / AFTERGLOW_SEC;
+    const fade = Math.exp(-4.0 * Math.min(p, 1.0));
+    return { uWarmup: fade, uCollapseV: 0.0, uCollapseH: 0.0, uFlash: fade };
+  }
+}
+
+// 立ち上がり急峻・末尾平坦のイージング（偏向コイルの指数減衰に相当）
+function easeOutExpo(x) {
+  return x >= 1.0 ? 1.0 : 1.0 - Math.pow(2.0, -10.0 * x);
+}
+
+/* ===== src/pipeline/NtscPipeline.js ===== */
+// フィールド処理（FieldRenderer）と CRT 表示を束ねるパイプライン。
+// タイミング制御は FieldScheduler / AppController 側が持ち、
+// ここは「渡されたパラメータで 1 フィールド／1 フレームを描く」処理だけを担当する。
+
+
+
+
+
+
+
+
+
+class NtscPipeline {
+  constructor(gl, canvas) {
+    this.gl = gl;
+    this.canvas = canvas;
+    this.quad = new QuadRenderer(gl);
+    this.field = new FieldRenderer(gl, this.quad);
+
+    this.displayProgram = new ShaderProgram(gl, QUAD_VERTEX_SOURCE, DISPLAY_FRAGMENT_SOURCE);
+    this.presentProgram = new ShaderProgram(gl, QUAD_VERTEX_SOURCE, PRESENT_FRAGMENT_SOURCE);
+
+    const w = TEXTURE_SIZE.FIELD_WIDTH;
+    const h = TEXTURE_SIZE.FIELD_HEIGHT;
+    this.fieldTarget = new ArrayRenderTarget(gl, w, h, 2);
+    this.displayTargets = [
+      new RenderTarget(gl, canvas.width, canvas.height, { linear: true }),
+      new RenderTarget(gl, canvas.width, canvas.height, { linear: true }),
+    ];
+
+    this.fieldParity = 0;
+    this.displayIndex = 0;
+    this.videoTexture = null;   // AppController が設定する
+  }
+
+  setVideoTexture(videoTexture) {
+    this.videoTexture = videoTexture;
+  }
+
+  resize(width, height) {
+    this.displayTargets[0].resize(width, height);
+    this.displayTargets[1].resize(width, height);
+  }
+
+  // 1 フィールドぶんの受信〜デコードを実行する
+  renderField(params, seed, fieldPeriodSec, hasVideo) {
+    // 映像入力時はエンコーダがバースト位相を送っているため局部発振はロックする。
+    // 砂嵐時のみバースト欠如でフリーランし、色相がゆっくり回る。
+    const drift = hasVideo ? 0.0 : params.chromaDrift;
+    this.field.advancePhase(drift, fieldPeriodSec, hasVideo);
+    this.field.drawNoise(seed);
+    this.field.drawEncode(params, this.videoTexture, hasVideo);
+    this.field.drawDetect(params, seed, hasVideo);
+
+    const parity = this.fieldParity;
+    this.field.drawDecode(params, () => this.fieldTarget.bindLayer(parity));
+
+    // ノンインターレース時は常に同じレイヤーを使い、全走査線を 59.94Hz で更新する
+    this.fieldParity = params.interlace > 0.5 ? this.fieldParity ^ 1 : 0;
+  }
+
+  // 表示 1 フレーム（残光合成 + 画面転送）
+  renderDisplay(params, powerUniforms) {
+    const gl = this.gl;
+    const current = this.displayTargets[this.displayIndex];
+    const previous = this.displayTargets[this.displayIndex ^ 1];
+
+    current.bind();
+    this.displayProgram.use().setUniforms({
+      uFieldSize: [TEXTURE_SIZE.FIELD_WIDTH, TEXTURE_SIZE.FIELD_HEIGHT],
+      uActiveLines: NTSC.ACTIVE_LINES_PER_FRAME,
+      uInterlaceOn: params.interlace,
+      uPersistence: params.persistence,
+      uSpotV: params.spotV,
+      uSpotH: params.spotH,
+      uScanline: params.scanline,
+      uCurvature: params.curvature,
+      uVignette: params.vignette,
+      uOverscan: params.overscan,
+      uPixelsPerLine: current.height / NTSC.ACTIVE_LINES_PER_FRAME,
+      uWarmup: powerUniforms.uWarmup,
+      uCollapseV: powerUniforms.uCollapseV,
+      uCollapseH: powerUniforms.uCollapseH,
+      uFlash: powerUniforms.uFlash,
+    });
+    this.displayProgram.setTexture('uFields', this.fieldTarget.texture, 0, gl.TEXTURE_2D_ARRAY);
+    this.displayProgram.setTexture('uPrev', previous.texture, 1);
+    this.quad.draw();
+
+    bindScreen(gl, this.canvas.width, this.canvas.height);
+    this.presentProgram.use().setUniforms({
+      uTexel: [1.0 / current.width, 1.0 / current.height],
+      uBloom: params.bloom,
+      uGamma: 0.95,
+    });
+    this.presentProgram.setTexture('uSource', current.texture, 0);
+    this.quad.draw();
+
+    this.displayIndex ^= 1;
+  }
+
+  clear() {
+    const gl = this.gl;
+    this.field.clear();
+    this.fieldTarget.clear();
+    for (const t of this.displayTargets) {
+      t.bind();
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    bindScreen(gl, this.canvas.width, this.canvas.height);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+
+  dispose() {
+    this.quad.dispose();
+    this.field.dispose();
+    this.displayProgram.dispose();
+    this.presentProgram.dispose();
+    this.fieldTarget.dispose();
+    this.displayTargets.forEach((t) => t.dispose());
+  }
+}
+
+/* ===== src/audio/NoiseSourceBuilder.js ===== */
+// 無信号時の FM 音声ノイズを組み立てる。
+//
+// FM 検波器の出力雑音は電力が f^2 に比例する（いわゆる三角雑音）。
+// これに 75us デエンファシス(1次LPF, 折点 2122Hz)が掛かるので、
+// 最終的な電力スペクトルは f^2 / (1 + (f/2122)^2) となり、
+// これは「白色雑音を折点 2122Hz の 1 次ハイパスに通したもの」と等価。
+// 最後に音声帯域(15kHz)で帯域制限する。
+
+const NOISE_BUFFER_SECONDS = 4;
+
+function createGaussianNoiseBuffer(ctx) {
+  const length = ctx.sampleRate * NOISE_BUFFER_SECONDS;
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i += 2) {
+    const u1 = Math.max(Math.random(), 1e-9);
+    const u2 = Math.random();
+    const r = Math.sqrt(-2.0 * Math.log(u1));
+    const a = 2.0 * Math.PI * u2;
+    data[i] = r * Math.cos(a) * 0.25;
+    if (i + 1 < length) data[i + 1] = r * Math.sin(a) * 0.25;
+  }
+  return buffer;
+}
+
+function createDeemphasisShaper(ctx) {
+  const tau = NTSC.DEEMPHASIS_TAU_S;
+  const dt = 1.0 / ctx.sampleRate;
+  const a = tau / (tau + dt);
+  return ctx.createIIRFilter(new Float64Array([a, -a]), new Float64Array([1.0, -a]));
+}
+
+function createAudioBandLimiter(ctx) {
+  const lpf = ctx.createBiquadFilter();
+  lpf.type = 'lowpass';
+  lpf.frequency.value = NTSC.AUDIO_LPF_HZ;
+  lpf.Q.value = 0.707;
+  return lpf;
+}
+
+function createIntercarrierTone(ctx) {
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = NTSC.INTERCARRIER_HZ;
+  return osc;
+}
+
+/* ===== src/audio/AudioEngine.js ===== */
+// WebAudio のノード生成・接続・音量制御のみを担当する。
+// スペクトル整形の実体は NoiseSourceBuilder 側にある。
+
+const RAMP_SECONDS = 0.12;
+
+class AudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+    this.beatGain = null;
+    this.nodes = [];
+    this.running = false;
+    this.volume = 0.0;
+    this.beat = 0.0;
+    this.videoMode = false;
+    this.videoBeat = 0.0;
+  }
+
+  get isRunning() {
+    return this.running;
+  }
+
+  async start() {
+    if (this.running) return;
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) throw new Error('WebAudio が利用できません。');
+    if (!this.ctx) this.ctx = new Ctor();
+    if (this.ctx.state === 'suspended') await this.ctx.resume();
+
+    const ctx = this.ctx;
+    const source = ctx.createBufferSource();
+    source.buffer = createGaussianNoiseBuffer(ctx);
+    source.loop = true;
+
+    const shaper = createDeemphasisShaper(ctx);
+    const limiter = createAudioBandLimiter(ctx);
+    const master = ctx.createGain();
+    master.gain.value = 0.0;
+
+    source.connect(shaper).connect(limiter).connect(master).connect(ctx.destination);
+
+    const osc = createIntercarrierTone(ctx);
+    const beatGain = ctx.createGain();
+    beatGain.gain.value = 0.0;
+    osc.connect(beatGain).connect(master);
+
+    source.start();
+    osc.start();
+
+    this.master = master;
+    this.beatGain = beatGain;
+    this.nodes = [source, osc, shaper, limiter, master, beatGain];
+    this.running = true;
+    this.applyVolume(this.volume);
+    this.applyBeat(this.beat);
+  }
+
+  stop() {
+    if (!this.running) return;
+    const now = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(now);
+    this.master.gain.setTargetAtTime(0.0, now, 0.04);
+    const nodes = this.nodes;
+    setTimeout(() => nodes.forEach((n) => { try { n.disconnect(); } catch (e) { /* noop */ } }), 300);
+    this.nodes = [];
+    this.master = null;
+    this.beatGain = null;
+    this.running = false;
+  }
+
+  applyVolume(value) {
+    this.volume = value;
+    if (!this.running) return;
+    const now = this.ctx.currentTime;
+    this.master.gain.linearRampToValueAtTime(value * 0.6 * this.noiseScale(), now + RAMP_SECONDS);
+  }
+
+  applyBeat(value) {
+    this.beat = value;
+    if (!this.running) return;
+    const now = this.ctx.currentTime;
+    this.beatGain.gain.linearRampToValueAtTime((value + this.videoBeat) * 0.08, now + RAMP_SECONDS);
+  }
+
+  // 映像入力の有無で音の性格を切り替える。
+  //   映像なし: フルの砂嵐ノイズ
+  //   映像あり: ノイズを大きく下げ、弱いインターキャリア音（サー感）を足す
+  setVideoMode(hasVideo) {
+    this.videoMode = hasVideo;
+    this.videoBeat = hasVideo ? 0.5 : 0.0;   // 弱いインターキャリア音
+    this.applyVolume(this.volume);
+    this.applyBeat(this.beat);
+  }
+
+  noiseScale() {
+    return this.videoMode ? 0.12 : 1.0;   // 映像時はノイズを 12% へ
+  }
+}
+
+/* ===== src/ui/ParameterStore.js ===== */
+// 可変パラメータの保持と変更通知だけを行う。DOM も WebGL も知らない。
+
+class ParameterStore {
+  constructor() {
+    this.values = buildDefaultValues();
+    this.listeners = new Set();
+  }
+
+  get(key) {
+    return this.values[key];
+  }
+
+  set(key, value) {
+    if (this.values[key] === value) return;
+    this.values[key] = value;
+    this.listeners.forEach((fn) => fn(key, value));
+  }
+
+  snapshot() {
+    return this.values;
+  }
+
+  resetAll() {
+    const defaults = buildDefaultValues();
+    for (const key in defaults) this.set(key, defaults[key]);
+  }
+
+  subscribe(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+}
+
+/* ===== src/ui/ControlPanel.js ===== */
+// PARAM_DEFS からサービスパネル風の UI を組み立てる。
+// 値の保持は ParameterStore が持ち、ここは表示と入力の変換だけを行う。
+
+function formatValue(def, value) {
+  if (def.type === 'toggle') return value > 0.5 ? 'ON' : 'OFF';
+  const digits = def.step < 0.05 ? 2 : 1;
+  return value.toFixed(digits) + (def.unit ? ' ' + def.unit : '');
+}
+
+function createRow(def, store, registry) {
+  const row = document.createElement('div');
+  row.className = def.type === 'toggle' ? 'row row--toggle' : 'row';
+
+  const label = document.createElement('label');
+  label.className = 'row__label';
+  label.textContent = def.label;
+  label.htmlFor = 'p-' + def.key;
+
+  const readout = document.createElement('span');
+  readout.className = 'row__value';
+  readout.textContent = formatValue(def, store.get(def.key));
+
+  const input = document.createElement('input');
+  input.id = 'p-' + def.key;
+  if (def.type === 'toggle') {
+    input.type = 'checkbox';
+    input.className = 'row__switch';
+    input.checked = store.get(def.key) > 0.5;
+    input.addEventListener('change', () => store.set(def.key, input.checked ? 1 : 0));
+  } else {
+    input.type = 'range';
+    input.className = 'row__slider';
+    input.min = String(def.min);
+    input.max = String(def.max);
+    input.step = String(def.step);
+    input.value = String(store.get(def.key));
+    input.addEventListener('input', () => store.set(def.key, parseFloat(input.value)));
+  }
+
+  const head = document.createElement('div');
+  head.className = 'row__head';
+  head.append(label, readout);
+  row.append(head, input);
+
+  registry.set(def.key, { def, input, readout });
+  return row;
+}
+
+function buildControlPanel(container, store) {
+  const registry = new Map();
+  const groups = new Map();
+
+  for (const def of PARAM_DEFS) {
+    if (!groups.has(def.group)) groups.set(def.group, []);
+    groups.get(def.group).push(def);
+  }
+
+  container.innerHTML = '';
+  for (const [name, defs] of groups) {
+    const section = document.createElement('section');
+    section.className = 'group';
+    const heading = document.createElement('h2');
+    heading.className = 'group__title';
+    heading.textContent = name;
+    section.append(heading);
+    for (const def of defs) section.append(createRow(def, store, registry));
+    container.append(section);
+  }
+
+  store.subscribe((key, value) => {
+    const entry = registry.get(key);
+    if (!entry) return;
+    entry.readout.textContent = formatValue(entry.def, value);
+    if (entry.def.type === 'toggle') entry.input.checked = value > 0.5;
+    else if (parseFloat(entry.input.value) !== value) entry.input.value = String(value);
+  });
+
+  return registry;
+}
+
+/* ===== src/core/AppController.js ===== */
+// アプリケーションの制御構造。
+// 各処理（描画・音声・UI）は下位モジュールに委譲し、ここは呼び出し順と状態遷移のみを持つ。
+
+
+
+
+
+
+
+
+const MIN_WIDTH = 480;
+const MAX_WIDTH = 2560;
+const MAX_DPR = 2.0;
+
+class AppController {
+  constructor() {
+    this.store = new ParameterStore();
+    this.scheduler = new FieldScheduler();
+    this.audio = new AudioEngine();
+    this.pipeline = null;
+    this.gl = null;
+    this.elements = null;
+    this.powered = false;
+    this.frameHandle = 0;
+    this.resolution = { width: 0, height: 0 };
+    this.meter = { frames: 0, lastTime: 0, fps: 0, cost: 0 };
+    this.capture = null;
+    this.envelope = new PowerEnvelope();
+    this.envelope.onShutdownComplete = () => this.handleShutdownComplete();
+    this.lastFrameTime = 0;
+  }
+
+  initialize(elements) {
+    this.elements = elements;
+    const canvas = elements.canvas;
+    this.gl = createGLContext(canvas);
+    this.applyResolution(canvas);
+    this.pipeline = new NtscPipeline(this.gl, canvas);
+    this.pipeline.clear();
+
+    this.capture = new CaptureCoordinator(this.gl);
+    this.pipeline.setVideoTexture(this.capture.videoTexture);
+    this.capture.onStatus = (state, detail) => this.handleCaptureStatus(state, detail);
+
+    buildControlPanel(elements.panel, this.store);
+    if (elements.renderer) elements.renderer.textContent = queryRendererName(this.gl);
+    this.bindParameterEffects();
+    this.bindControls();
+  }
+
+  // 表示サイズ x devicePixelRatio x 描画解像度 から内部解像度を決める
+  applyResolution(canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const cssWidth = rect.width > 0 ? rect.width : canvas.clientWidth || 960;
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    const scale = this.store.get('renderScale');
+    let width = Math.round(cssWidth * dpr * scale);
+    width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, width));
+    const height = Math.round((width * 3) / 4);
+    if (this.resolution.width === width && this.resolution.height === height) return;
+    this.resolution = { width, height };
+    resizeCanvasToDisplay(canvas, this.gl, width, height);
+    if (this.pipeline) this.pipeline.resize(width, height);
+  }
+
+  bindParameterEffects() {
+    this.store.subscribe((key, value) => {
+      if (key === 'volume') this.audio.applyVolume(value);
+      if (key === 'intercarrier') this.audio.applyBeat(value);
+      if (key === 'renderScale') this.applyResolution(this.elements.canvas);
+    });
+    this.audio.applyVolume(this.store.get('volume'));
+    this.audio.applyBeat(this.store.get('intercarrier'));
+  }
+
+  bindControls() {
+    const { power, reset, fullscreen, stage, canvas, capture } = this.elements;
+    if (power) power.addEventListener('click', () => this.togglePower());
+    if (capture) {
+      capture.disabled = !this.capture.isSupported;
+      capture.addEventListener('click', () => this.toggleCapture());
+    }
+    if (reset) reset.addEventListener('click', () => this.store.resetAll());
+    if (fullscreen && stage) {
+      fullscreen.addEventListener('click', () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else stage.requestFullscreen?.();
+      });
+    }
+    let pending = 0;
+    const onResize = () => {
+      cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(() => this.applyResolution(canvas));
+    };
+    window.addEventListener('resize', onResize);
+    document.addEventListener('fullscreenchange', onResize);
+  }
+
+  async togglePower() {
+    if (this.powered) this.powerOff();
+    else await this.powerOn();
+  }
+
+  async powerOn() {
+    if (this.envelope.state === 'warming' || this.envelope.state === 'on') return;
+    this.powered = true;
+    this.envelope.powerOn();
+    if (this.elements.stage) this.elements.stage.classList.add('tube-active');
+    this.updatePowerLabel();
+    const now = performance.now();
+    this.scheduler.reset(now);
+    this.meter.lastTime = now;
+    this.meter.frames = 0;
+    this.lastFrameTime = now;
+    try {
+      await this.audio.start();
+      this.audio.applyVolume(this.store.get('volume'));
+      this.audio.applyBeat(this.store.get('intercarrier'));
+    } catch (err) {
+      this.setStatus('音声を開始できませんでした: ' + err.message);
+    }
+    if (!this.frameHandle) this.loop(now);
+  }
+
+  powerOff() {
+    if (!this.powered) return;
+    this.powered = false;
+    // キャプチャはシャットダウン完了時に止める（つぶれる間は最後の映像を保持）。
+    this.envelope.powerOff();
+    this.audio.stop();
+    this.updatePowerLabel();
+  }
+
+  handleShutdownComplete() {
+    cancelAnimationFrame(this.frameHandle);
+    this.frameHandle = 0;
+    this.capture.stop();
+    this.pipeline.clear();
+    // 完全に消えてから案内オーバーレイを復帰させる。
+    if (this.elements.stage) this.elements.stage.classList.remove('tube-active');
+    this.setStatus('待機中');
+  }
+
+  updatePowerLabel() {
+    const { power, lamp, stage } = this.elements;
+    if (power) power.textContent = this.powered ? '電源を切る' : '電源を入れる';
+    if (lamp) lamp.classList.toggle('is-on', this.powered);
+    if (stage) stage.classList.toggle('is-on', this.powered);
+  }
+
+  async toggleCapture() {
+    if (!this.powered) await this.powerOn();
+    const active = await this.capture.toggle();
+    this.updateCaptureLabel(active);
+  }
+
+  updateCaptureLabel(active) {
+    const btn = this.elements.capture;
+    if (btn) btn.textContent = active ? '映像を停止' : '映像を取り込む';
+    const stage = this.elements.stage;
+    if (stage) stage.classList.toggle('has-video', active);
+  }
+
+  handleCaptureStatus(state, detail) {
+    if (state === 'error') { this.setStatus(detail); this.updateCaptureLabel(false); }
+    if (state === 'stopped') {
+      this.updateCaptureLabel(false);
+      this.audio.setVideoMode(false);
+      // 砂嵐へ戻るのでカラーキラーを既定（ON=モノクロ）へ戻す
+      this.store.set('colorKiller', 1);
+    }
+    if (state === 'started') {
+      this.updateCaptureLabel(true);
+      this.audio.setVideoMode(true);
+      // 実機はバースト検出でカラーへ切り替わる。キラーを自動解除しクロマゲインを確保。
+      this.store.set('colorKiller', 0);
+      if (this.store.get('chromaGain') < 0.5) this.store.set('chromaGain', 1.0);
+    }
+  }
+
+  loop(timestamp) {
+    const dt = (timestamp - this.lastFrameTime) / 1000.0;
+    this.lastFrameTime = timestamp;
+    this.envelope.update(Number.isFinite(dt) ? dt : 0.016);
+
+    if (!this.envelope.shouldRender) {
+      this.frameHandle = 0;
+      return;   // 完全消灯。次回 powerOn で再開。
+    }
+
+    const params = this.store.snapshot();
+    const begin = performance.now();
+
+    // シャットダウン中も検波は回し続ける（砂嵐が動いたままつぶれる）。
+    // ただし残光段階まで来たら映像更新は不要なので止めて負荷を抑える。
+    const collapsing = this.envelope.state === 'shutting';
+    const stillLive = this.powered || (collapsing && this.envelope.elapsed < 0.41);
+    const hasVideo = stillLive ? this.capture.update() : false;
+    if (stillLive) {
+      const fields = this.scheduler.advance(timestamp);
+      for (let i = 0; i < fields; i += 1) {
+        this.pipeline.renderField(params, this.scheduler.nextSeed() + i, this.scheduler.fieldPeriod, hasVideo);
+      }
+    }
+    this.pipeline.renderDisplay(params, this.envelope.uniforms());
+
+    this.meter.cost += performance.now() - begin;
+    this.updateStatus(timestamp, hasVideo);
+    this.frameHandle = requestAnimationFrame((t) => this.loop(t));
+  }
+
+  updateStatus(timestamp, hasVideo) {
+    const m = this.meter;
+    m.frames += 1;
+    const elapsed = timestamp - m.lastTime;
+    if (elapsed < 500) return;
+    m.fps = Math.round((m.frames * 1000) / elapsed);
+    const perFrame = (m.cost / m.frames).toFixed(2);
+    m.frames = 0;
+    m.cost = 0;
+    m.lastTime = timestamp;
+    let head;
+    if (this.envelope.state === 'warming') head = 'WARMING UP';
+    else if (this.envelope.state === 'shutting') head = 'POWERING OFF';
+    else head = hasVideo ? 'VIDEO IN' : 'NO SIGNAL';
+    this.setStatus(
+      head + ' / FIELD ' + this.scheduler.fieldCount.toString().padStart(7, '0') +
+      ' / ' + this.resolution.width + '×' + this.resolution.height +
+      ' / ' + m.fps + ' fps / CPU ' + perFrame + ' ms'
+    );
+  }
+
+  setStatus(text) {
+    if (this.elements.status) this.elements.status.textContent = text;
+  }
+
+  run() {
+    this.setStatus('待機中');
+    this.updatePowerLabel();
+  }
+}
+
+/* ===== src/main.js ===== */
+// エントリポイント。各機能の呼び出しのみを行う。
+
+function collectElements() {
+  return {
+    canvas: document.getElementById('screen'),
+    panel: document.getElementById('panel'),
+    status: document.getElementById('status'),
+    power: document.getElementById('power'),
+    reset: document.getElementById('reset'),
+    fullscreen: document.getElementById('fullscreen'),
+    lamp: document.getElementById('lamp'),
+    stage: document.getElementById('stage'),
+    renderer: document.getElementById('renderer'),
+    capture: document.getElementById('capture'),
+  };
+}
+
+function bootstrap() {
+  const app = new AppController();
+  app.initialize(collectElements());
+  app.run();
+}
+
+document.addEventListener('DOMContentLoaded', bootstrap);
+</script>
+</body>
+</html>
